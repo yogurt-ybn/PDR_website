@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IMU Data Logger</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background-color: #f5f5f5; }
+    .container { background-color: white; border-radius: 8px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 600px; margin: 0 auto; }
+    h1 { color: #4285f4; margin-top: 0; font-size: 24px; }
+    .status { padding: 10px; border-radius: 4px; margin: 10px 0; font-weight: bold; text-align: center; }
+    .connected { background-color: #d9f5dc; color: #0f5323; }
+    .disconnected { background-color: #fad9d9; color: #8b0000; }
+    button { background-color: #4285f4; color: white; border: none; padding: 12px; border-radius: 4px; cursor: pointer; font-size: 16px; margin: 5px 0; width: 100%; }
+    button:disabled { background-color: #cccccc; }
+    .btn-danger { background-color: #ea4335; }
+    .btn-success { background-color: #34a853; }
+    .btn-export { background-color: #fbbc05; color: black; }
+    .log-container { margin-top: 15px; height: 150px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9; border-radius: 4px; }
+    .log-entry { margin-bottom: 5px; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+    .error { color: #ea4335; } .success { color: #34a853; } .warning { color: #fbbc05; }
+    .sensor-data { margin-top: 10px; background-color: #f0f0f0; padding: 10px; border-radius: 4px; font-size: 14px; margin-bottom: 15px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>IMU Data Logger</h1>
+    <div id="connection-status" class="status disconnected">Ready to Log</div>
+
+    <button id="start-btn" class="btn-success">Start Logging Data</button>
+    <button id="stop-btn" class="btn-danger" disabled>Stop Logging</button>
+    <button id="export-btn" class="btn-export" disabled>Export CSV</button>
+
+    <div class="sensor-data">
+      <div id="accel-data">Accelerometer: Not available</div>
+      <div id="gyro-data">Gyroscope: Not available</div>
+    </div>
+
+    <div class="log-container" id="log"></div>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById('start-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    const exportBtn = document.getElementById('export-btn');
+    const connectionStatus = document.getElementById('connection-status');
+    const logElement = document.getElementById('log');
+    const accelDataElement = document.getElementById('accel-data');
+    const gyroDataElement = document.getElementById('gyro-data');
+
+    let isLogging = false;
+    let allSensorData = [];
+
+    function log(msg,type='info'){
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `${new Date().toLocaleTimeString()} - ${msg}`;
+      logElement.prepend(entry);
+      while(logElement.children.length > 20) logElement.removeChild(logElement.lastChild);
+    }
+
+    function handleMotionEvent(event) {
+      const timestamp = performance.now() / 1000;
+      const a = event.accelerationIncludingGravity || event.acceleration;
+      const r = event.rotationRate;
+
+      if (!a && !r) return;
+
+      const data = {
+        timestamp,
+        accel_x: a?.x ?? 'NaN',
+        accel_y: a?.y ?? 'NaN',
+        accel_z: a?.z ?? 'NaN',
+        gyro_alpha: r?.alpha ?? 'NaN',
+        gyro_beta: r?.beta ?? 'NaN',
+        gyro_gamma: r?.gamma ?? 'NaN'
+      };
+
+      allSensorData.push(data);
+
+      if (a) {
+        accelDataElement.textContent = `Accelerometer: X:${data.accel_x.toFixed(4)}, Y:${data.accel_y.toFixed(4)}, Z:${data.accel_z.toFixed(4)} m/s²`;
+      }
+      if (r) {
+        gyroDataElement.textContent = `Gyroscope: α:${data.gyro_alpha.toFixed(4)}, β:${data.gyro_beta.toFixed(4)}, γ:${data.gyro_gamma.toFixed(4)} rad/s`;
+      }
+    }
+
+    async function startLogging() {
+      if (isLogging) return;
+
+      isLogging = true;
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      exportBtn.disabled = true;
+
+      connectionStatus.textContent = 'Logging in progress...';
+      connectionStatus.className = 'status connected';
+      log('Started logging sensor data', 'success');
+
+      allSensorData = [];
+
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+      if (isIOS && typeof DeviceMotionEvent.requestPermission === 'function') {
+        // iOS 13+ 权限请求
+        try {
+          const response = await DeviceMotionEvent.requestPermission();
+          if (response === 'granted') {
+            window.addEventListener('devicemotion', handleMotionEvent);
+          } else {
+            log('DeviceMotion permission denied', 'error');
+            isLogging = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+          }
+        } catch (err) {
+          log('Error requesting DeviceMotion permission: ' + err.message, 'error');
+          isLogging = false;
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        }
+      } else if (window.DeviceMotionEvent) {
+        // Android/其他浏览器直接监听
+        window.addEventListener('devicemotion', handleMotionEvent);
+      } else {
+        accelDataElement.textContent = "Accelerometer: Not available";
+        gyroDataElement.textContent = "Gyroscope: Not available";
+        log('DeviceMotion not supported on this device/browser', 'error');
+        isLogging = false;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+    }
+
+    function stopLogging() {
+      if (!isLogging) return;
+
+      isLogging = false;
+      window.removeEventListener('devicemotion', handleMotionEvent);
+
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      exportBtn.disabled = false;
+
+      connectionStatus.textContent = 'Logging Stopped';
+      connectionStatus.className = 'status disconnected';
+      log('Stopped logging. Data ready for export', 'warning');
+    }
+
+    function exportToCsv() {
+      if (allSensorData.length === 0) {
+        alert("No data to export");
+        return;
+      }
+
+      const headers = ['timestamp','accel_x','accel_y','accel_z','gyro_alpha','gyro_beta','gyro_gamma'];
+      const csvRows = [headers.join(',')];
+
+      allSensorData.forEach(d => {
+        csvRows.push(headers.map(h => d[h]).join(','));
+      });
+
+      const csvString = csvRows.join('\n');
+      try {
+        const blob = new Blob([`\ufeff${csvString}`], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const now = new Date();
+        a.download = `imu_data_${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}-${now.getMinutes().toString().padStart(2,'0')}-${now.getSeconds().toString().padStart(2,'0')}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        log('CSV exported successfully', 'success');
+      } catch (e) {
+        const a = document.createElement("a");
+        a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csvString);
+        a.download = "imu_data.csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        log('CSV exported via fallback method', 'warning');
+      }
+    }
+
+    startBtn.addEventListener('click', startLogging);
+    stopBtn.addEventListener('click', stopLogging);
+    exportBtn.addEventListener('click', exportToCsv);
+
+    log('IMU Data Logger is ready. Click "Start Logging Data" to begin.', 'warning');
+  </script>
+</body>
+</html>
