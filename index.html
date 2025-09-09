@@ -104,6 +104,7 @@
       <button id="start-btn" class="btn-success">Start Logging</button>
       <button id="stop-btn" class="btn-danger" disabled>Stop Logging</button>
       <button id="export-btn" class="btn-export" disabled>Export CSV</button>
+      <button id="clear-btn" class="btn-danger">Clear Data</button>
     </div>
 
     <div class="card sensor-data">
@@ -129,6 +130,7 @@
     const startBtn = document.getElementById('start-btn');
     const stopBtn = document.getElementById('stop-btn');
     const exportBtn = document.getElementById('export-btn');
+    const clearBtn = document.getElementById('clear-btn');
     const connectionStatus = document.getElementById('connection-status');
     const logElement = document.getElementById('log');
 
@@ -319,12 +321,40 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       log('CSV exported successfully', 'success');
+    } 
+
+    function clearData() {
+      if (isLogging) stopLogging(); // 停止日志记录
+
+      allSensorData = [];
+
+      // 清空图表
+      imuChart.data.labels = [];
+      imuChart.data.datasets.forEach(ds => ds.data = []);
+      imuChart.update();
+
+      // 清空日志
+      logElement.innerHTML = '';
+
+      // 重置传感器显示
+      accelX.textContent = 'X: Not available';
+      accelY.textContent = 'Y: Not available';
+      accelZ.textContent = 'Z: Not available';
+      gyroAlpha.textContent = 'α: Not available';
+      gyroBeta.textContent = 'β: Not available';
+      gyroGamma.textContent = 'γ: Not available';
+
+      connectionStatus.textContent = 'Ready to Log';
+      connectionStatus.className = 'status disconnected';
+
+      log('All data cleared', 'warning');
     }
 
     startBtn.addEventListener('click', startLogging);
     stopBtn.addEventListener('click', stopLogging);
     exportBtn.addEventListener('click', exportToCsv);
-
+    clearBtn.addEventListener('click', clearData);
+    
     log('IMU Data Logger is ready. Click "Start Logging" to begin.', 'warning');
   </script>
 </body>
